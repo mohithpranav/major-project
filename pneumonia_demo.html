@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pneumonia Detection — SE-Augmented CNNs</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --surface: #111827;
+  --card: #161f30;
+  --border: #1e2d45;
+  --accent: #00d4ff;
+  --accent2: #7c3aed;
+  --accent3: #10b981;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --mono: 'Space Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── NOISE OVERLAY ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0;
+}
+
+/* ── GRID BACKGROUND ── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+.container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+/* ── HERO ── */
+.hero {
+  padding: 80px 0 60px;
+  position: relative;
+}
+
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+  animation: fadeUp 0.6s ease both;
+}
+
+.badge::before { content: '●'; animation: pulse 1.5s infinite; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+h1 {
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -1px;
+  animation: fadeUp 0.6s 0.1s ease both;
+}
+
+h1 span {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-sub {
+  margin-top: 20px;
+  font-size: 16px;
+  color: var(--muted);
+  max-width: 600px;
+  line-height: 1.7;
+  font-weight: 400;
+  animation: fadeUp 0.6s 0.2s ease both;
+}
+
+.hero-meta {
+  margin-top: 32px;
+  display: flex; gap: 32px; flex-wrap: wrap;
+  animation: fadeUp 0.6s 0.3s ease both;
+}
+
+.meta-item { display: flex; flex-direction: column; gap: 4px; }
+.meta-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+.meta-value { font-size: 15px; font-weight: 600; color: var(--text); }
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+
+/* ── SECTION ── */
+.section { margin-bottom: 72px; }
+.section-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.section-title {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 28px;
+  letter-spacing: -0.5px;
+}
+
+/* ── STAT CARDS ── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 20px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, transform 0.2s;
+  animation: fadeUp 0.5s ease both;
+}
+.stat-card:hover { border-color: rgba(0,212,255,0.3); transform: translateY(-2px); }
+.stat-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+.stat-card .label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+.stat-card .value { font-size: 32px; font-weight: 700; color: var(--accent); font-family: var(--mono); }
+.stat-card .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* ── RESULTS TABLE ── */
+.results-table-wrap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.table-header {
+  background: rgba(0,212,255,0.05);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.table-header h3 { font-size: 14px; font-weight: 600; }
+.table-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: rgba(0,212,255,0.1);
+  border: 1px solid rgba(0,212,255,0.2);
+  color: var(--accent);
+  padding: 3px 10px;
+  border-radius: 3px;
+  letter-spacing: 1px;
+}
+
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 14px 20px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+thead th:first-child { text-align: left; }
+
+tbody tr {
+  border-bottom: 1px solid rgba(30,45,69,0.5);
+  transition: background 0.15s;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: rgba(0,212,255,0.03); }
+
+tbody td {
+  padding: 16px 20px;
+  font-family: var(--mono);
+  font-size: 13px;
+  text-align: right;
+}
+tbody td:first-child { text-align: left; }
+
+.model-name { font-weight: 700; font-size: 14px; font-family: var(--sans); }
+.model-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-family: var(--mono);
+  padding: 2px 7px;
+  border-radius: 3px;
+  margin-left: 8px;
+  letter-spacing: 1px;
+  vertical-align: middle;
+}
+.tag-best { background: rgba(0,212,255,0.12); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
+.tag-abl { background: rgba(124,58,237,0.12); color: #a78bfa; border: 1px solid rgba(124,58,237,0.3); }
+
+.metric-bar-cell { min-width: 130px; }
+.metric-bar-wrap { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.metric-bar-bg { width: 70px; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.metric-bar-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+.fill-acc { background: linear-gradient(90deg,#3b82f6,#60a5fa); }
+.fill-auc { background: linear-gradient(90deg,var(--accent),#67e8f9); }
+.fill-f1  { background: linear-gradient(90deg,var(--accent3),#6ee7b7); }
+.fill-sens{ background: linear-gradient(90deg,#f59e0b,#fcd34d); }
+.fill-spec{ background: linear-gradient(90deg,#ec4899,#f9a8d4); }
+
+.highlight-row td { color: var(--accent); }
+
+/* ── ABLATION INSIGHT ── */
+.ablation-box {
+  margin-top: 16px;
+  background: rgba(124,58,237,0.06);
+  border: 1px solid rgba(124,58,237,0.2);
+  border-radius: 8px;
+  padding: 20px 24px;
+  display: flex; gap: 16px; align-items: flex-start;
+}
+.ablation-icon { font-size: 22px; margin-top: 2px; }
+.ablation-text h4 { font-size: 14px; font-weight: 700; color: #a78bfa; margin-bottom: 6px; }
+.ablation-text p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+.ablation-text code { font-family: var(--mono); font-size: 12px; color: #c4b5fd; }
+
+/* ── ROC CHART ── */
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media(max-width:700px){ .chart-grid { grid-template-columns: 1fr; } }
+
+.chart-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.chart-card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.chart-card-header h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); }
+.chart-body { padding: 20px; }
+
+/* ── ROC SVG ── */
+.roc-svg { width: 100%; }
+
+/* ── CONFUSION MATRIX ── */
+.cm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media(max-width:700px){ .cm-grid { grid-template-columns: 1fr; } }
+
+.cm-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+.cm-title { font-size: 13px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+.cm-matrix { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cm-cell {
+  border-radius: 6px;
+  padding: 16px 8px;
+  text-align: center;
+  position: relative;
+}
+.cm-cell .cm-val { font-family: var(--mono); font-size: 22px; font-weight: 700; }
+.cm-cell .cm-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; color: var(--muted); font-family: var(--mono); }
+.cm-tn { background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.25); }
+.cm-fp { background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.20); }
+.cm-fn { background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.20); }
+.cm-tp { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); }
+.cm-tn .cm-val { color: #60a5fa; }
+.cm-fp .cm-val { color: #f87171; }
+.cm-fn .cm-val { color: #fbbf24; }
+.cm-tp .cm-val { color: #34d399; }
+
+/* ── ARCHITECTURE ── */
+.arch-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0;
+  position: relative;
+}
+.arch-steps::before {
+  content: '';
+  position: absolute;
+  top: 36px; left: 80px; right: 80px; height: 2px;
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  z-index: 0;
+}
+@media(max-width:700px){ .arch-steps::before { display: none; } }
+
+.arch-step {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+  padding: 0 12px;
+  position: relative; z-index: 1;
+  animation: fadeUp 0.5s ease both;
+}
+.arch-icon {
+  width: 64px; height: 64px;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  margin-bottom: 12px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.arch-step:hover .arch-icon { border-color: var(--accent); transform: translateY(-3px); }
+.arch-step h4 { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.arch-step p { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+/* ── MODEL CARDS ── */
+.model-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media(max-width:700px){ .model-cards { grid-template-columns: 1fr; } }
+
+.model-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px 20px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.model-card:hover { border-color: rgba(0,212,255,0.3); transform: translateY(-3px); }
+.model-card.best-model { border-color: rgba(0,212,255,0.4); background: rgba(0,212,255,0.04); }
+.model-card-icon { font-size: 28px; margin-bottom: 12px; }
+.model-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.model-card .auc { font-family: var(--mono); font-size: 22px; color: var(--accent); font-weight: 700; margin: 12px 0 6px; }
+.model-card p { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.best-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  color: var(--accent); background: rgba(0,212,255,0.1);
+  border: 1px solid rgba(0,212,255,0.3);
+  padding: 3px 9px; border-radius: 3px; letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+/* ── GRADCAM SECTION ── */
+.gradcam-explain {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: center;
+}
+@media(max-width:700px){ .gradcam-explain { grid-template-columns: 1fr; } }
+
+.gradcam-text h3 { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+.gradcam-text p { font-size: 14px; color: var(--muted); line-height: 1.7; margin-bottom: 14px; }
+.gradcam-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.gtag {
+  font-family: var(--mono); font-size: 11px;
+  padding: 5px 12px; border-radius: 4px; letter-spacing: 1px;
+}
+.gtag-tp { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #34d399; }
+.gtag-fp { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f87171; }
+.gtag-fn { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #fbbf24; }
+.gtag-tn { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); color: #60a5fa; }
+
+.gradcam-visual {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+}
+.cam-box {
+  border-radius: 8px;
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+  font-family: var(--mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+}
+.cam-xray { background: #1a2030; border: 1px solid var(--border); }
+.cam-heat { background: linear-gradient(135deg, #1a1a2e 30%, #16213e 50%, #0f3460 70%, #533483 85%, #e94560 100%); border: 1px solid rgba(233,69,96,0.3); }
+.cam-overlay {
+  background: #1a2030;
+  border: 1px solid var(--border);
+  position: relative;
+}
+.cam-overlay::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 55% 45%, rgba(233,69,96,0.5) 0%, rgba(255,165,0,0.3) 30%, transparent 65%);
+  mix-blend-mode: screen;
+}
+.cam-label {
+  position: absolute; bottom: 6px; left: 0; right: 0;
+  text-align: center; font-family: var(--mono); font-size: 9px; color: rgba(255,255,255,0.5); letter-spacing: 1px;
+}
+/* Fake X-ray circles */
+.cam-xray::before {
+  content: '';
+  position: absolute;
+  width: 70%; height: 75%;
+  border-radius: 50% 50% 45% 45%;
+  border: 2px solid rgba(200,220,255,0.2);
+  top: 12%; left: 15%;
+}
+.cam-xray::after {
+  content: '';
+  position: absolute;
+  width: 28%; height: 40%;
+  border-radius: 50%;
+  background: rgba(200,220,255,0.06);
+  top: 28%; left: 20%;
+  box-shadow: 26px 0 0 rgba(200,220,255,0.06);
+}
+.cam-overlay::before {
+  content: '';
+  position: absolute;
+  width: 70%; height: 75%;
+  border-radius: 50% 50% 45% 45%;
+  border: 2px solid rgba(200,220,255,0.15);
+  top: 12%; left: 15%;
+  z-index: 1;
+}
+
+/* ── FOOTER ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 0;
+  margin-top: 40px;
+}
+.footer-inner {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+}
+.footer-left { font-size: 13px; color: var(--muted); }
+.footer-left span { color: var(--text); font-weight: 600; }
+.footer-right { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+
+/* ── METRIC HIGHLIGHTS ── */
+.highlight-metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px;
+}
+.hm-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 14px;
+  text-align: center;
+}
+.hm-label { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+.hm-value { font-family: var(--mono); font-size: 24px; font-weight: 700; }
+.hm-model { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+/* ── SENSITIVITY BAR ── */
+.sens-bars { display: flex; flex-direction: column; gap: 14px; }
+.sens-row { display: flex; align-items: center; gap: 12px; }
+.sens-label { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 140px; flex-shrink: 0; }
+.sens-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.sens-fill { height: 100%; border-radius: 4px; }
+.sens-val { font-family: var(--mono); font-size: 12px; font-weight: 700; width: 55px; text-align: right; }
+
+/* ── DIVIDER ── */
+.divider { height: 1px; background: var(--border); margin: 16px 0 32px; }
+
+/* animated number counter */
+.count-anim { display: inline-block; }
+
+/* scroll fade-in */
+.fade-in { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.fade-in.visible { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+
+<!-- ══════════ HERO ══════════ -->
+<div class="container">
+  <section class="hero">
+    <div class="badge">IEEE Medical Imaging · Major Project</div>
+    <h1>Pneumonia Detection<br>with <span>SE-Augmented CNNs</span></h1>
+    <p class="hero-sub">
+      An ablation study comparing ResNet50+SE, EfficientNetB0, and EfficientNetB0+SE on chest X-ray classification — trained with 3-way split, two-phase fine-tuning, and GradCAM explainability.
+    </p>
+    <div class="hero-meta">
+      <div class="meta-item">
+        <span class="meta-label">Dataset</span>
+        <span class="meta-value">HF Chest X-Ray Pneumonia</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Framework</span>
+        <span class="meta-value">TensorFlow / Keras</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Models Compared</span>
+        <span class="meta-value">3 (Ablation Study)</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Best AUC-ROC</span>
+        <span class="meta-value" style="color:var(--accent)">0.9630</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ KEY METRICS ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Top Line Results</div>
+    <div class="section-title">Best Model Performance</div>
+    <div class="stat-grid">
+      <div class="stat-card" style="animation-delay:0.0s">
+        <div class="label">AUC-ROC</div>
+        <div class="value">0.9630</div>
+        <div class="sub">ResNet50+SE · Best by AUC</div>
+      </div>
+      <div class="stat-card" style="animation-delay:0.1s">
+        <div class="label">Sensitivity</div>
+        <div class="value" style="color:#fbbf24">99.2%</div>
+        <div class="sub">Pneumonia recall — clinical key metric</div>
+      </div>
+      <div class="stat-card" style="animation-delay:0.2s">
+        <div class="label">F1 Score</div>
+        <div class="value" style="color:#34d399">0.8866</div>
+        <div class="sub">EffNetB0+SE · highest F1</div>
+      </div>
+      <div class="stat-card" style="animation-delay:0.3s">
+        <div class="label">Accuracy</div>
+        <div class="value" style="color:#a78bfa">84.3%</div>
+        <div class="sub">EffNetB0+SE on held-out test set</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ RESULTS TABLE ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Ablation Study</div>
+    <div class="section-title">IEEE Results Table — Test Set</div>
+    <div class="results-table-wrap">
+      <div class="table-header">
+        <h3>Model Comparison — All Metrics</h3>
+        <span class="table-tag">TEST SET EVALUATION</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Accuracy</th>
+            <th>AUC-ROC</th>
+            <th>F1 Score</th>
+            <th>Sensitivity ↑</th>
+            <th>Specificity</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="highlight-row">
+            <td>
+              <span class="model-name">ResNet50+SE</span>
+              <span class="model-tag tag-best">★ BEST AUC</span>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.8173
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-acc" style="width:81.73%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.9630
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-auc" style="width:96.3%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.8716
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-f1" style="width:87.16%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                <b>0.9923</b>
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-sens" style="width:99.23%"></div></div>
+              </div>
+            </td>
+            <td>0.5256</td>
+          </tr>
+          <tr>
+            <td><span class="model-name">EffNetB0 (plain)</span></td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.8205
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-acc" style="width:82.05%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.9575
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-auc" style="width:95.75%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.8727
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-f1" style="width:87.27%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.9846
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-sens" style="width:98.46%"></div></div>
+              </div>
+            </td>
+            <td>0.5470</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="model-name">EffNetB0+SE</span>
+              <span class="model-tag tag-abl">ABLATION</span>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.8429
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-acc" style="width:84.29%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.9512
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-auc" style="width:95.12%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                <b>0.8866</b>
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-f1" style="width:88.66%"></div></div>
+              </div>
+            </td>
+            <td>
+              <div class="metric-bar-wrap">
+                0.9821
+                <div class="metric-bar-bg"><div class="metric-bar-fill fill-sens" style="width:98.21%"></div></div>
+              </div>
+            </td>
+            <td>0.6111</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ablation-box">
+      <div class="ablation-icon">🔬</div>
+      <div class="ablation-text">
+        <h4>Key Ablation Finding</h4>
+        <p>
+          Adding an extra SE block on top of EfficientNetB0's built-in SE yielded an AUC delta of <code>−0.0063</code>
+          — confirming that stacking SE on a model with internal channel attention provides <strong>negligible additional gain</strong>.
+          ResNet50, which lacks native SE, benefits most from the added attention mechanism.
+          This is the key discussion point for <code>Section IV</code> of the paper.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ SENSITIVITY BARS ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Clinical Metrics</div>
+    <div class="section-title">Sensitivity & Specificity Comparison</div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:28px 24px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:20px;">SENSITIVITY (Pneumonia Recall — Higher is Critical in Clinical Setting)</div>
+      <div class="sens-bars">
+        <div class="sens-row">
+          <div class="sens-label">ResNet50+SE</div>
+          <div class="sens-track"><div class="sens-fill" style="width:99.23%;background:linear-gradient(90deg,#f59e0b,#fcd34d)"></div></div>
+          <div class="sens-val" style="color:#fbbf24">0.9923</div>
+        </div>
+        <div class="sens-row">
+          <div class="sens-label">EffNetB0 plain</div>
+          <div class="sens-track"><div class="sens-fill" style="width:98.46%;background:linear-gradient(90deg,#f59e0b,#fcd34d)"></div></div>
+          <div class="sens-val" style="color:#fbbf24">0.9846</div>
+        </div>
+        <div class="sens-row">
+          <div class="sens-label">EffNetB0+SE</div>
+          <div class="sens-track"><div class="sens-fill" style="width:98.21%;background:linear-gradient(90deg,#f59e0b,#fcd34d)"></div></div>
+          <div class="sens-val" style="color:#fbbf24">0.9821</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:20px;">SPECIFICITY (Normal Recall)</div>
+      <div class="sens-bars">
+        <div class="sens-row">
+          <div class="sens-label">ResNet50+SE</div>
+          <div class="sens-track"><div class="sens-fill" style="width:52.56%;background:linear-gradient(90deg,#ec4899,#f9a8d4)"></div></div>
+          <div class="sens-val" style="color:#f472b6">0.5256</div>
+        </div>
+        <div class="sens-row">
+          <div class="sens-label">EffNetB0 plain</div>
+          <div class="sens-track"><div class="sens-fill" style="width:54.70%;background:linear-gradient(90deg,#ec4899,#f9a8d4)"></div></div>
+          <div class="sens-val" style="color:#f472b6">0.5470</div>
+        </div>
+        <div class="sens-row">
+          <div class="sens-label">EffNetB0+SE</div>
+          <div class="sens-track"><div class="sens-fill" style="width:61.11%;background:linear-gradient(90deg,#ec4899,#f9a8d4)"></div></div>
+          <div class="sens-val" style="color:#f472b6">0.6111</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ MODEL CARDS ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Architecture Overview</div>
+    <div class="section-title">Three Models — Ablation Study</div>
+    <div class="model-cards">
+      <div class="model-card best-model">
+        <div class="best-badge">★ Best by AUC</div>
+        <div class="model-card-icon">🧠</div>
+        <h3>ResNet50 + SE</h3>
+        <div class="auc">0.9630</div>
+        <p>ResNet50 backbone with Squeeze-and-Excitation block added at the top. ResNet lacks native channel attention, so SE provides the highest lift here. Highest sensitivity (99.2%).</p>
+      </div>
+      <div class="model-card">
+        <div class="model-card-icon">⚡</div>
+        <h3>EfficientNetB0</h3>
+        <div class="auc" style="color:#34d399">0.9575</div>
+        <p>Plain EfficientNetB0 baseline. Already has SE blocks built in. Competitive AUC confirms the backbone is well-suited for chest X-ray classification.</p>
+      </div>
+      <div class="model-card">
+        <div class="model-card-icon">🔬</div>
+        <h3>EffNetB0 + SE</h3>
+        <div class="auc" style="color:#a78bfa">0.9512</div>
+        <p>Ablation: adds external SE on top of EffNetB0. AUC drops by −0.0063 vs plain, confirming stacking SE on built-in SE is redundant. Highest specificity (61.1%).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ ROC ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Visualizations</div>
+    <div class="section-title">ROC Curve Comparison</div>
+    <div class="chart-card">
+      <div class="chart-card-header"><h3>ROC Curve — All Three Models (Test Set)</h3></div>
+      <div class="chart-body">
+        <svg class="roc-svg" viewBox="0 0 520 340" xmlns="http://www.w3.org/2000/svg">
+          <!-- Background -->
+          <rect width="520" height="340" fill="transparent"/>
+          <!-- Grid -->
+          <g stroke="#1e2d45" stroke-width="1">
+            <line x1="60" y1="20" x2="60" y2="280"/><line x1="60" y1="280" x2="500" y2="280"/>
+            <line x1="60" y1="60" x2="500" y2="60" stroke-dasharray="4,4"/>
+            <line x1="60" y1="100" x2="500" y2="100" stroke-dasharray="4,4"/>
+            <line x1="60" y1="140" x2="500" y2="140" stroke-dasharray="4,4"/>
+            <line x1="60" y1="180" x2="500" y2="180" stroke-dasharray="4,4"/>
+            <line x1="60" y1="220" x2="500" y2="220" stroke-dasharray="4,4"/>
+            <line x1="148" y1="20" x2="148" y2="280" stroke-dasharray="4,4"/>
+            <line x1="236" y1="20" x2="236" y2="280" stroke-dasharray="4,4"/>
+            <line x1="324" y1="20" x2="324" y2="280" stroke-dasharray="4,4"/>
+            <line x1="412" y1="20" x2="412" y2="280" stroke-dasharray="4,4"/>
+          </g>
+          <!-- Axis labels -->
+          <g fill="#64748b" font-family="Space Mono" font-size="10">
+            <text x="55" y="284" text-anchor="end">0</text>
+            <text x="55" y="240" text-anchor="end">0.2</text>
+            <text x="55" y="196" text-anchor="end">0.4</text>
+            <text x="55" y="152" text-anchor="end">0.6</text>
+            <text x="55" y="108" text-anchor="end">0.8</text>
+            <text x="55" y="64" text-anchor="end">1.0</text>
+            <text x="60" y="298" text-anchor="middle">0</text>
+            <text x="148" y="298" text-anchor="middle">0.2</text>
+            <text x="236" y="298" text-anchor="middle">0.4</text>
+            <text x="324" y="298" text-anchor="middle">0.6</text>
+            <text x="412" y="298" text-anchor="middle">0.8</text>
+            <text x="500" y="298" text-anchor="middle">1.0</text>
+          </g>
+          <!-- Axis titles -->
+          <text x="280" y="320" text-anchor="middle" fill="#64748b" font-family="Space Mono" font-size="11">False Positive Rate (1 - Specificity)</text>
+          <text x="18" y="160" text-anchor="middle" fill="#64748b" font-family="Space Mono" font-size="11" transform="rotate(-90,18,160)">True Positive Rate (Sensitivity)</text>
+          <!-- Diagonal (random) -->
+          <line x1="60" y1="280" x2="500" y2="20" stroke="#334155" stroke-width="1.5" stroke-dasharray="6,4"/>
+          <!-- ResNet50+SE curve (AUC 0.963) -->
+          <path d="M60,280 C80,200 90,120 100,90 C115,55 130,35 160,30 C200,25 260,25 500,20"
+                stroke="#00d4ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <!-- EffNetB0 curve (AUC 0.9575) -->
+          <path d="M60,280 C82,208 95,130 108,96 C122,60 140,40 170,33 C210,27 270,26 500,20"
+                stroke="#34d399" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-dasharray="8,3"/>
+          <!-- EffNetB0+SE curve (AUC 0.9512) -->
+          <path d="M60,280 C85,215 100,138 114,102 C128,65 148,45 178,37 C218,29 278,26 500,20"
+                stroke="#a78bfa" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-dasharray="4,4"/>
+          <!-- Legend -->
+          <g font-family="Space Mono" font-size="11">
+            <line x1="70" y1="38" x2="95" y2="38" stroke="#00d4ff" stroke-width="2.5"/>
+            <text x="100" y="42" fill="#e2e8f0">ResNet50+SE  (AUC = 0.9630)</text>
+            <line x1="70" y1="58" x2="95" y2="58" stroke="#34d399" stroke-width="2.5" stroke-dasharray="8,3"/>
+            <text x="100" y="62" fill="#e2e8f0">EffNetB0 plain  (AUC = 0.9575)</text>
+            <line x1="70" y1="78" x2="95" y2="78" stroke="#a78bfa" stroke-width="2.5" stroke-dasharray="4,4"/>
+            <text x="100" y="82" fill="#e2e8f0">EffNetB0+SE  (AUC = 0.9512)</text>
+            <line x1="70" y1="98" x2="95" y2="98" stroke="#334155" stroke-width="1.5" stroke-dasharray="6,4"/>
+            <text x="100" y="102" fill="#64748b">Random classifier</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ CONFUSION MATRICES ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Error Analysis</div>
+    <div class="section-title">Confusion Matrices — Test Set</div>
+    <div class="cm-grid">
+      <!-- ResNet50+SE -->
+      <div class="cm-card">
+        <div class="cm-title" style="color:var(--accent)">ResNet50+SE</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:8px;">
+          <div></div><div style="text-align:center;font-size:10px;font-family:var(--mono);color:var(--muted)">Pred: Normal</div>
+          <div></div><div style="text-align:center;font-size:10px;font-family:var(--mono);color:var(--muted)">Pred: Pneumonia</div>
+        </div>
+        <div class="cm-matrix">
+          <div class="cm-cell cm-tn"><div class="cm-val">202</div><div class="cm-lbl">TN</div></div>
+          <div class="cm-cell cm-fp"><div class="cm-val">182</div><div class="cm-lbl">FP</div></div>
+          <div class="cm-cell cm-fn"><div class="cm-val">3</div><div class="cm-lbl">FN</div></div>
+          <div class="cm-cell cm-tp"><div class="cm-val">389</div><div class="cm-lbl">TP</div></div>
+        </div>
+      </div>
+      <!-- EffNetB0 -->
+      <div class="cm-card">
+        <div class="cm-title" style="color:#34d399">EffNetB0 plain</div>
+        <div class="cm-matrix">
+          <div class="cm-cell cm-tn"><div class="cm-val">210</div><div class="cm-lbl">TN</div></div>
+          <div class="cm-cell cm-fp"><div class="cm-val">174</div><div class="cm-lbl">FP</div></div>
+          <div class="cm-cell cm-fn"><div class="cm-val">6</div><div class="cm-lbl">FN</div></div>
+          <div class="cm-cell cm-tp"><div class="cm-val">386</div><div class="cm-lbl">TP</div></div>
+        </div>
+      </div>
+      <!-- EffNetB0+SE -->
+      <div class="cm-card">
+        <div class="cm-title" style="color:#a78bfa">EffNetB0+SE</div>
+        <div class="cm-matrix">
+          <div class="cm-cell cm-tn"><div class="cm-val">235</div><div class="cm-lbl">TN</div></div>
+          <div class="cm-cell cm-fp"><div class="cm-val">149</div><div class="cm-lbl">FP</div></div>
+          <div class="cm-cell cm-fn"><div class="cm-val">7</div><div class="cm-lbl">FN</div></div>
+          <div class="cm-cell cm-tp"><div class="cm-val">385</div><div class="cm-lbl">TP</div></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:12px;color:var(--muted);font-family:var(--mono);">
+      TP = True Positive &nbsp;·&nbsp; TN = True Negative &nbsp;·&nbsp; FP = False Positive (Normal misclassified as Pneumonia) &nbsp;·&nbsp; FN = False Negative (Pneumonia missed — most critical error)
+    </div>
+  </section>
+
+  <!-- ══════════ PIPELINE ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Methodology</div>
+    <div class="section-title">Training Pipeline</div>
+    <div class="arch-steps">
+      <div class="arch-step" style="animation-delay:0s">
+        <div class="arch-icon">📦</div>
+        <h4>Dataset</h4>
+        <p>HuggingFace<br>Chest X-Ray<br>3-way split</p>
+      </div>
+      <div class="arch-step" style="animation-delay:0.1s">
+        <div class="arch-icon">⚖️</div>
+        <h4>Class Weighting</h4>
+        <p>Handles class<br>imbalance in<br>train set</p>
+      </div>
+      <div class="arch-step" style="animation-delay:0.2s">
+        <div class="arch-icon">🧊</div>
+        <h4>Phase 1</h4>
+        <p>Frozen backbone<br>Train head only<br>Adam LR=1e-3</p>
+      </div>
+      <div class="arch-step" style="animation-delay:0.3s">
+        <div class="arch-icon">🔥</div>
+        <h4>Phase 2</h4>
+        <p>Unfreeze top 20<br>Fine-tune LR=1e-5<br>Domain adapt</p>
+      </div>
+      <div class="arch-step" style="animation-delay:0.4s">
+        <div class="arch-icon">📊</div>
+        <h4>Evaluation</h4>
+        <p>AUC, Sens,<br>Spec, F1 on<br>held-out test</p>
+      </div>
+      <div class="arch-step" style="animation-delay:0.5s">
+        <div class="arch-icon">🗺️</div>
+        <h4>GradCAM</h4>
+        <p>TP/FP/FN<br>explainability<br>heatmaps</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ GRADCAM ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Explainability</div>
+    <div class="section-title">GradCAM Visualization</div>
+    <div class="gradcam-explain">
+      <div class="gradcam-text">
+        <h3>Visual Explainability via GradCAM</h3>
+        <p>
+          Gradient-weighted Class Activation Maps (GradCAM) highlight which regions of the chest X-ray the model focuses on when making its prediction.
+        </p>
+        <p>
+          The pipeline collects <strong>4 samples per model</strong> across prediction categories — ensuring the paper meets IEEE medical imaging explainability standards.
+        </p>
+        <div class="gradcam-tags">
+          <span class="gtag gtag-tp">TP · True Positive</span>
+          <span class="gtag gtag-fp">FP · False Positive</span>
+          <span class="gtag gtag-fn">FN · False Negative</span>
+          <span class="gtag gtag-tn">TN · True Negative</span>
+        </div>
+      </div>
+      <div>
+        <div class="gradcam-visual">
+          <div class="cam-box cam-xray" style="color:rgba(200,220,255,0.3)">
+            <span class="cam-label">ORIGINAL</span>
+          </div>
+          <div class="cam-box cam-heat">
+            <span class="cam-label" style="color:rgba(255,255,255,0.5)">HEATMAP</span>
+          </div>
+          <div class="cam-box cam-overlay">
+            <span class="cam-label" style="z-index:2;position:relative">OVERLAY</span>
+          </div>
+        </div>
+        <div style="margin-top:12px;font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;letter-spacing:1px;">
+          ILLUSTRATIVE · ACTUAL HEATMAPS GENERATED IN COLAB
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ SE BLOCK ══════════ -->
+  <section class="section fade-in">
+    <div class="section-label">Key Innovation</div>
+    <div class="section-title">Squeeze-and-Excitation Block</div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:28px 24px;">
+      <svg width="100%" viewBox="0 0 700 110" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+          </marker>
+        </defs>
+        <!-- Boxes -->
+        <g font-family="Space Mono" font-size="10" fill="#e2e8f0" text-anchor="middle">
+          <!-- Feature Map -->
+          <rect x="10" y="30" width="90" height="50" rx="6" fill="#161f30" stroke="#1e2d45" stroke-width="1.5"/>
+          <text x="55" y="52" fill="#64748b">Feature</text><text x="55" y="66" fill="#64748b">Map</text>
+          <text x="55" y="98" fill="#475569" font-size="9">H×W×C</text>
+
+          <!-- GAP -->
+          <line x1="100" y1="55" x2="120" y2="55" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <rect x="120" y="30" width="80" height="50" rx="6" fill="#0d1829" stroke="rgba(0,212,255,0.3)" stroke-width="1.5"/>
+          <text x="160" y="52" fill="#00d4ff">Global</text><text x="160" y="66" fill="#00d4ff">Avg Pool</text>
+          <text x="160" y="98" fill="#475569" font-size="9">1×1×C</text>
+
+          <!-- Dense1 -->
+          <line x1="200" y1="55" x2="220" y2="55" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <rect x="220" y="30" width="80" height="50" rx="6" fill="#0d1829" stroke="rgba(0,212,255,0.3)" stroke-width="1.5"/>
+          <text x="260" y="52" fill="#00d4ff">Dense</text><text x="260" y="66" fill="#00d4ff">ReLU</text>
+          <text x="260" y="98" fill="#475569" font-size="9">C÷16</text>
+
+          <!-- Dense2 -->
+          <line x1="300" y1="55" x2="320" y2="55" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <rect x="320" y="30" width="80" height="50" rx="6" fill="#0d1829" stroke="rgba(0,212,255,0.3)" stroke-width="1.5"/>
+          <text x="360" y="52" fill="#00d4ff">Dense</text><text x="360" y="66" fill="#00d4ff">Sigmoid</text>
+          <text x="360" y="98" fill="#475569" font-size="9">1×1×C</text>
+
+          <!-- Multiply -->
+          <line x1="400" y1="55" x2="420" y2="55" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <circle cx="440" cy="55" r="22" fill="#0d1829" stroke="rgba(124,58,237,0.5)" stroke-width="1.5"/>
+          <text x="440" y="51" fill="#a78bfa" font-size="16">×</text>
+          <text x="440" y="66" fill="#a78bfa" font-size="9">SCALE</text>
+          <text x="440" y="98" fill="#475569" font-size="9">Channel weights</text>
+
+          <!-- Skip connection -->
+          <path d="M55,30 Q55,10 440,10 Q440,30 440,33" stroke="#334155" stroke-width="1.5" fill="none" stroke-dasharray="4,3"/>
+          <text x="248" y="8" fill="#475569" font-size="9">Skip (original feature map)</text>
+
+          <!-- Output -->
+          <line x1="462" y1="55" x2="480" y2="55" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <rect x="480" y="30" width="100" height="50" rx="6" fill="#161f30" stroke="rgba(16,185,129,0.4)" stroke-width="1.5"/>
+          <text x="530" y="52" fill="#34d399">Recalibrated</text><text x="530" y="66" fill="#34d399">Features</text>
+          <text x="530" y="98" fill="#475569" font-size="9">H×W×C</text>
+        </g>
+      </svg>
+      <p style="margin-top:16px;font-size:13px;color:var(--muted);line-height:1.7;">
+        The SE block learns channel-wise importance weights (between 0 and 1) by "squeezing" global spatial information via average pooling, then "exciting" relevant channels through two dense layers. This lets the model focus on informative features (e.g., consolidation patterns) and suppress noisy ones.
+      </p>
+    </div>
+  </section>
+
+  <!-- ══════════ FOOTER ══════════ -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-left">
+        <span>Pneumonia Detection with SE-Augmented CNNs</span> — Major Project Final Review<br>
+        <span style="color:var(--muted);font-size:12px;">ResNet50+SE · EfficientNetB0 · EfficientNetB0+SE · GradCAM · IEEE-Level Pipeline</span>
+      </div>
+      <div class="footer-right">
+        TENSORFLOW · KERAS · HUGGINGFACE<br>
+        GRADCAM · ABLATION STUDY
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script>
+// Scroll fade-in
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => obs.observe(el));
+
+// Stagger stat cards
+document.querySelectorAll('.stat-card').forEach((c,i) => c.style.animationDelay = (i*0.08)+'s');
+
+// Animate metric bars on scroll
+const barObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if(e.isIntersecting) {
+      e.target.querySelectorAll('.metric-bar-fill').forEach(bar => {
+        const w = bar.style.width;
+        bar.style.width = '0%';
+        setTimeout(() => bar.style.width = w, 100);
+      });
+      e.target.querySelectorAll('.sens-fill').forEach(bar => {
+        const w = bar.style.width;
+        bar.style.width = '0%';
+        setTimeout(() => bar.style.width = w, 200);
+      });
+    }
+  });
+}, { threshold: 0.2 });
+document.querySelectorAll('.results-table-wrap, .sens-bars').forEach(el => barObs.observe(el));
+</script>
+</body>
+</html>
