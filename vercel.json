@@ -1,19 +1,5 @@
 {
   "buildCommand": "",
-  "outputDirectory": ".",
-  "cleanUrls": true,
-  "routes": [
-    {
-      "src": "/",
-      "dest": "/src/pneumonia_demo.html"
-    },
-    {
-      "src": "/(.*).html",
-      "dest": "/src/$1.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/src/$1.html"
-    }
-  ]
+  "outputDirectory": "public",
+  "cleanUrls": false
 }
